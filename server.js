@@ -1,6 +1,9 @@
-// server.js
 const express = require('express');
-const app = express();
+const cors = require('cors');  // Mueve esta línea aquí para usar cors después de declarar 'app'
+const app = express();  // Aquí está la declaración correcta de 'app'
+
+// Habilitar CORS para todas las rutas
+app.use(cors());
 
 // Importamos las rutas
 const contactoRoutes = require('./routes/contactoRoutes');
