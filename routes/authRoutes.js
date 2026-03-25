@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const router = express.Router();
 const db = require('../config/config'); // Conexión a la base de datos
+const verifyToken = require('../middleware/verifyToken'); // Middleware para validar token
 
 
 // Ruta para el login
@@ -84,5 +85,66 @@ router.post('/register', async (req, res) => {
 
 });
 
+// Ruta para cambiar contraseña
+router.post('/change-password', verifyToken, async (req, res) => {
+
+  const { currentPassword, newPassword, confirmPassword } = req.body;
+
+  // validar campos
+  if (!currentPassword || !newPassword || !confirmPassword) {
+    return res.status(400).json({ message: 'Todos los campos son obligatorios' });
+  }
+
+  if (newPassword !== confirmPassword) {
+    return res.status(400).json({ message: 'Las contraseñas no coinciden' });
+  }
+
+  const userId = req.user.id;
+
+  const query = 'SELECT * FROM usuarios WHERE id = ?';
+
+  db.query(query, [userId], async (err, results) => {
+
+    if (err) {
+      return res.status(500).json({ message: 'Error al consultar usuario' });
+    }
+
+    if (results.length === 0) {
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+
+    const usuario = results[0];
+
+    try {
+
+      const isMatch = await bcrypt.compare(currentPassword, usuario.password);
+
+      if (!isMatch) {
+        return res.status(400).json({ message: 'La contraseña actual es incorrecta' });
+      }
+
+      const newPasswordHash = await bcrypt.hash(newPassword, 10);
+
+      const updateQuery = 'UPDATE usuarios SET password = ? WHERE id = ?';
+
+      db.query(updateQuery, [newPasswordHash, userId], (err) => {
+
+        if (err) {
+          return res.status(500).json({ message: 'Error al actualizar contraseña' });
+        }
+
+        res.json({ message: 'Contraseña actualizada correctamente' });
+
+      });
+
+    } catch (error) {
+
+      res.status(500).json({ message: 'Error del servidor' });
+
+    }
+
+  });
+
+});
 
 module.exports = router;
