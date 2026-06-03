@@ -13,7 +13,13 @@ function verifyToken(req, res, next) {
     return res.status(401).json({ message: 'Token inválido' });
   }
 
-  jwt.verify(token, 'tu_clave_secreta', (err, decoded) => {
+  const jwtSecret = process.env.JWT_SECRET;
+
+  if (!jwtSecret) {
+    return res.status(500).json({ message: 'JWT_SECRET no está configurado' });
+  }
+
+  jwt.verify(token, jwtSecret, (err, decoded) => {
     if (err) {
       return res.status(403).json({ message: 'Token inválido o expirado' });
     }

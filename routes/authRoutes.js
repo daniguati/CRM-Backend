@@ -1,11 +1,12 @@
-// routes/authRoutes.js
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const router = express.Router();
-const db = require('../config/config'); // Conexión a la base de datos
-const verifyToken = require('../middleware/verifyToken'); // Middleware para validar token
+const db = require('../config/config');
+const verifyToken = require('../middleware/verifyToken');
 
+const jwtSecret = () => process.env.JWT_SECRET;
+const jwtExpiresIn = () => process.env.JWT_EXPIRES_IN || '2h';
 
 // Ruta para el login
 router.post('/login', (req, res) => {
@@ -39,13 +40,26 @@ router.post('/login', (req, res) => {
         return res.status(400).json({ message: 'Credenciales incorrectas' });
       }
 
+      if (!jwtSecret()) {
+        return res.status(500).json({ message: 'JWT_SECRET no está configurado' });
+      }
+
       const token = jwt.sign(
-        { id: usuario.id, email: usuario.email },
-        'tu_clave_secreta',
-        { expiresIn: '1h' }
+        { id: usuario.id, email: usuario.email, rol: usuario.rol },
+        jwtSecret(),
+        { expiresIn: jwtExpiresIn() }
       );
 
-      res.json({ message: 'Login exitoso', token });
+      res.json({
+        message: 'Login exitoso',
+        token,
+        user: {
+          id: usuario.id,
+          nombre: usuario.nombre,
+          email: usuario.email,
+          rol: usuario.rol
+        }
+      });
 
     });
 
@@ -57,21 +71,29 @@ router.post('/login', (req, res) => {
 // Ruta para registrar usuario
 router.post('/register', async (req, res) => {
 
-  const { email, password } = req.body;
+  const { nombre = 'Usuario', email, password } = req.body;
 
   if (!email || !password) {
     return res.status(400).json({ message: 'Email y password son requeridos' });
+  }
+
+  if (password.length < 6) {
+    return res.status(400).json({ message: 'La contraseña debe tener mínimo 6 caracteres' });
   }
 
   try {
 
     const passwordHash = await bcrypt.hash(password, 10);
 
-    const query = 'INSERT INTO usuarios (email, password) VALUES (?, ?)';
+    const query = 'INSERT INTO usuarios (nombre, email, password) VALUES (?, ?, ?)';
 
-    db.query(query, [email, passwordHash], (err, result) => {
+    db.query(query, [nombre, email, passwordHash], (err) => {
 
       if (err) {
+        if (err.code === 'ER_DUP_ENTRY') {
+          return res.status(409).json({ message: 'El email ya está registrado' });
+        }
+
         return res.status(500).json({ message: 'Error al registrar usuario' });
       }
 
@@ -83,6 +105,22 @@ router.post('/register', async (req, res) => {
     res.status(500).json({ message: 'Error del servidor' });
   }
 
+});
+
+router.get('/me', verifyToken, (req, res) => {
+  const query = 'SELECT id, nombre, email, rol, created_at FROM usuarios WHERE id = ?';
+
+  db.query(query, [req.user.id], (err, results) => {
+    if (err) {
+      return res.status(500).json({ message: 'Error al consultar usuario' });
+    }
+
+    if (results.length === 0) {
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+
+    res.json(results[0]);
+  });
 });
 
 // Ruta para cambiar contraseña

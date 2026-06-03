@@ -1,104 +1,92 @@
-// routes/contactoRoutes.js
 const express = require('express');
 const router = express.Router();
 const contactoModel = require('../models/contacto');
-const db = require('../config/config');  // Esto importa la conexión a la base de datos
+const verifyToken = require('../middleware/verifyToken');
+
+router.use(verifyToken);
+
+function validarContacto(req, res, next) {
+  const { nombre, telefono, correo } = req.body;
+
+  if (!nombre || !telefono || !correo) {
+    return res.status(400).json({
+      message: 'Nombre, teléfono y correo son obligatorios'
+    });
+  }
+
+  next();
+}
 
 // Ruta para obtener todos los contactos
-router.get('/', (req, res) => {
-  const query = 'SELECT * FROM contactos';
-  db.query(query, (err, results) => {
-    if (err) return res.status(500).send(err);
-    res.json(results);
-  });
+router.get('/', async (req, res) => {
+  try {
+    const contactos = await contactoModel.obtenerContactos(req.query.search || '');
+    res.json(contactos);
+  } catch (err) {
+    res.status(500).json({ message: 'Error al obtener contactos' });
+  }
 });
 
+router.get('/:id', async (req, res) => {
+  try {
+    const contacto = await contactoModel.obtenerContactoPorId(req.params.id);
 
-// NUEVA RUTA GET POR ID
-router.get('/:id', (req, res) => {
-  const id = req.params.id;
-
-  const query = 'SELECT * FROM contactos WHERE id = ?';
-
-  db.query(query, [id], (err, results) => {
-
-    if (err) {
-      return res.status(500).send(err);
-    }
-
-    if (results.length === 0) {
+    if (!contacto) {
       return res.status(404).json({ message: 'Contacto no encontrado' });
     }
 
-    res.json(results[0]);
-  });
+    res.json(contacto);
+  } catch (err) {
+    res.status(500).json({ message: 'Error al obtener contacto' });
+  }
 });
 
 // Ruta para crear un nuevo contacto
-router.post('/', (req, res) => {
-  const { nombre, telefono, correo, empresa, notas } = req.body;
+router.post('/', validarContacto, async (req, res) => {
+  try {
+    const contacto = await contactoModel.crearContacto(req.body);
+    res.status(201).json(contacto);
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ message: 'Ya existe un contacto con ese correo' });
+    }
 
-  const query = 'INSERT INTO contactos (nombre, telefono, correo, empresa, notas) VALUES (?, ?, ?, ?, ?)';
-
-  db.query(query, [nombre, telefono, correo, empresa, notas], (err, result) => {
-    if (err) return res.status(500).send(err);
-
-    res.status(201).json({
-      message: 'Contacto creado',
-      id: result.insertId
-    });
-  });
+    res.status(500).json({ message: 'Error al crear contacto' });
+  }
 });
 
 // Ruta para editar un contacto
-router.put('/:id', async (req, res) => {
-
-  const { nombre, telefono, correo, empresa, notas } = req.body;
-  const id = req.params.id;
-
+router.put('/:id', validarContacto, async (req, res) => {
   try {
+    const contacto = await contactoModel.editarContacto(req.params.id, req.body);
 
-    const result = await contactoModel.editarContacto(
-      id,
-      nombre,
-      telefono,
-      correo,
-      empresa,
-      notas
-    );
+    if (!contacto) {
+      return res.status(404).json({ message: 'Contacto no encontrado' });
+    }
 
-    res.status(200).json({
-      message: 'Contacto actualizado',
-      result
-    });
-
+    res.json(contacto);
   } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ message: 'Ya existe un contacto con ese correo' });
+    }
 
-    res.status(500).send(err);
-
+    res.status(500).json({ message: 'Error al actualizar contacto' });
   }
 });
 
 // Ruta para eliminar un contacto
 router.delete('/:id', async (req, res) => {
-
-  const id = req.params.id;
-
   try {
+    const eliminado = await contactoModel.eliminarContacto(req.params.id);
 
-    const result = await contactoModel.eliminarContacto(id);
+    if (!eliminado) {
+      return res.status(404).json({ message: 'Contacto no encontrado' });
+    }
 
-    res.status(200).json({
-      message: 'Contacto eliminado',
-      result
-    });
-
+    res.json({ message: 'Contacto eliminado' });
   } catch (err) {
-
-    res.status(500).send(err);
-
+    res.status(500).json({ message: 'Error al eliminar contacto' });
   }
-
 });
 
 module.exports = router;
