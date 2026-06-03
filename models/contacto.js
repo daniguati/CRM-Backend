@@ -1,51 +1,92 @@
-// models/contacto.js
 const db = require('../config/config');
 
-// Función para obtener todos los contactos
-const obtenerContactos = () => {
-  return new Promise((resolve, reject) => {
-    db.query('SELECT * FROM contactos', (err, results) => {
-      if (err) reject(err);
-      resolve(results);
-    });
-  });
-};
+const obtenerContactos = async (search = '') => {
+  const params = [];
+  let query = `
+    SELECT id, nombre, telefono, correo, empresa, notas, estado, created_at, updated_at
+    FROM contactos
+  `;
 
-// Función para crear un nuevo contacto
-const crearContacto = (nombre, telefono, correo, empresa, notas) => {
-  return new Promise((resolve, reject) => {
-    const query = 'INSERT INTO contactos (nombre, telefono, correo, empresa, notas) VALUES (?, ?, ?, ?, ?)';
-    db.query(query, [nombre, telefono, correo, empresa, notas], (err, result) => {
-      if (err) reject(err);
-      resolve(result);
-    });
-  });
-};
-
-// Función para editar un contacto
-const editarContacto = (id, nombre, telefono, correo, empresa, notas) => {
-  return new Promise((resolve, reject) => {
-    const query = `
-      UPDATE contactos 
-      SET nombre = ?, telefono = ?, correo = ?, empresa = ?, notas = ?
-      WHERE id = ?
+  if (search) {
+    query += `
+      WHERE nombre LIKE ?
+        OR telefono LIKE ?
+        OR correo LIKE ?
+        OR empresa LIKE ?
     `;
-    db.query(query, [nombre, telefono, correo, empresa, notas, id], (err, result) => {
-      if (err) reject(err);
-      resolve(result);
-    });
-  });
+
+    const term = `%${search}%`;
+    params.push(term, term, term, term);
+  }
+
+  query += ' ORDER BY id DESC';
+
+  const [rows] = await db.promise().query(query, params);
+  return rows;
 };
 
-// Función para eliminar un contacto
-const eliminarContacto = (id) => {
-  return new Promise((resolve, reject) => {
-    const query = 'DELETE FROM contactos WHERE id = ?';
-    db.query(query, [id], (err, result) => {
-      if (err) reject(err);
-      resolve(result);
-    });
-  });
+const obtenerContactoPorId = async (id) => {
+  const [rows] = await db.promise().query(
+    `SELECT id, nombre, telefono, correo, empresa, notas, estado, created_at, updated_at
+     FROM contactos
+     WHERE id = ?`,
+    [id]
+  );
+
+  return rows[0] || null;
 };
 
-module.exports = { obtenerContactos, crearContacto,editarContacto, eliminarContacto };
+const crearContacto = async ({ nombre, telefono, correo, empresa, notas, estado = 'lead' }) => {
+  const query = `
+    INSERT INTO contactos (nombre, telefono, correo, empresa, notas, estado)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `;
+
+  const [result] = await db.promise().query(query, [
+    nombre,
+    telefono,
+    correo,
+    empresa || null,
+    notas || null,
+    estado
+  ]);
+
+  return obtenerContactoPorId(result.insertId);
+};
+
+const editarContacto = async (id, { nombre, telefono, correo, empresa, notas, estado = 'lead' }) => {
+  const query = `
+    UPDATE contactos
+    SET nombre = ?, telefono = ?, correo = ?, empresa = ?, notas = ?, estado = ?
+    WHERE id = ?
+  `;
+
+  const [result] = await db.promise().query(query, [
+    nombre,
+    telefono,
+    correo,
+    empresa || null,
+    notas || null,
+    estado,
+    id
+  ]);
+
+  if (result.affectedRows === 0) {
+    return null;
+  }
+
+  return obtenerContactoPorId(id);
+};
+
+const eliminarContacto = async (id) => {
+  const [result] = await db.promise().query('DELETE FROM contactos WHERE id = ?', [id]);
+  return result.affectedRows > 0;
+};
+
+module.exports = {
+  obtenerContactos,
+  obtenerContactoPorId,
+  crearContacto,
+  editarContacto,
+  eliminarContacto
+};
